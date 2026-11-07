@@ -5,19 +5,22 @@ import CrudPage from '../components/CrudPage.jsx'
 import { Badge, BarChart, Card, DataTable, Field, Icon, Kpi, Modal, PageHead, Tabs, COLORS } from '../components/ui.jsx'
 import { TODAY, daysBetween, fdate, int, lastMonths, money, moneyK, monthLabel, nearestExpiry, productStock, stockValue, unitsByMonth, uid } from '../lib/domain.js'
 import { stockIn, stockOut } from '../lib/stock.js'
+import { Barcode, makeEan13 } from '../lib/barcode.jsx'
+import { imageToDataUrl } from '../lib/image.js'
 
 const CATEGORIES = ['Monitorage', 'Imagerie', 'Ventilation', 'Perfusion', 'Urgence', 'Hygiène', 'Communication', 'Aspiration', 'Cardiologie', 'Accessoires', 'Consommables', 'Pièces détachées']
 
 export default function Stock() {
   const { db } = useStore()
   const { tab } = useRoute()
-  const t = ['products', 'lots', 'movements', 'inventory', 'warehouses'].includes(tab) ? tab : 'products'
+  const t = ['products', 'categories', 'lots', 'movements', 'inventory', 'warehouses'].includes(tab) ? tab : 'products'
   const below = db.products.filter((p) => productStock(p) < p.minStock)
   const expSoon = db.products.flatMap((p) => p.lots.filter((l) => l.expiry && l.qty > 0 && daysBetween(TODAY, l.expiry) <= 90))
 
   return (
     <div className="stack">
-      <PageHead title="Produits & stock" sub="Catalogue de dispositifs médicaux, traçabilité par lot, FEFO, multi-dépôts et inventaire.">
+      <PageHead title="Inventaire" sub="Produits, codes-barres, catégories, lots et péremption (FEFO), entrepôts, mouvements et inventaire.">
+        <Scanner />
         <button className="btn ai" onClick={() => go('ai', 'reorder')}><Icon name="sparkles" size={15} />Plan de réappro IA</button>
       </PageHead>
       <div className="grid g4">
@@ -26,8 +29,9 @@ export default function Stock() {
         <Kpi label="Sous le stock minimum" value={below.length} icon="alert" color="red" foot={below.slice(0, 2).map((p) => p.ref).join(', ')} />
         <Kpi label="Lots périmant < 90 j" value={expSoon.length} icon="clock" color="amber" />
       </div>
-      <Tabs tabs={[['products', 'Produits'], ['lots', 'Lots & péremption'], ['movements', 'Mouvements'], ['inventory', 'Inventaire'], ['warehouses', 'Dépôts']]} value={t} onChange={(x) => go('stock', x)} />
+      <Tabs tabs={[['products', 'Produits'], ['categories', 'Catégories'], ['lots', 'Lots & péremption'], ['movements', 'Mouvements'], ['inventory', 'Inventaire physique'], ['warehouses', 'Entrepôts']]} value={t} onChange={(x) => go('stock', x)} />
       {t === 'products' && <Products />}
+      {t === 'categories' && <Categories />}
       {t === 'lots' && <Lots />}
       {t === 'movements' && <Movements />}
       {t === 'inventory' && <Inventory />}
@@ -42,7 +46,7 @@ function Products() {
   return (
     <CrudPage col="products" entity="Produit"
       defaults={{ tva: 20, dmClass: 'IIa', kind: 'conso', unit: 'unité', lots: [], minStock: 10, warrantyMonths: 0, ce: true }}
-      validate={(p) => (!p.ref || !p.name ? 'Référence et désignation obligatoires' : null)}
+      validate={(p) => { if (!p.ref || !p.name) return 'Référence et désignation obligatoires'; if (!p.barcode) p.barcode = makeEan13(Date.now() % 1e9); return null }}
       fields={[
         { key: 'ref', label: 'Référence' }, { key: 'name', label: 'Désignation' },
         { key: 'category', label: 'Catégorie', type: 'select', options: CATEGORIES }, { key: 'kind', label: 'Type', type: 'select', options: [['equip', 'Équipement'], ['conso', 'Consommable / accessoire']] },
@@ -50,11 +54,13 @@ function Products() {
         { key: 'ammps', label: 'N° enregistrement AMMPS' }, { key: 'unit', label: 'Unité' },
         { key: 'cost', label: 'Prix de revient HT (DH)', type: 'number' }, { key: 'price', label: 'Prix de vente HT (DH)', type: 'number' },
         { key: 'tva', label: 'TVA %', type: 'number' }, { key: 'minStock', label: 'Stock minimum', type: 'number' },
-        { key: 'warrantyMonths', label: 'Garantie (mois)', type: 'number' }, { key: 'ce', label: 'Marquage CE', type: 'checkbox' },
+        { key: 'warrantyMonths', label: 'Garantie (mois)', type: 'number' }, { key: 'barcode', label: 'Code-barres (EAN-13, généré si vide)' },
+        { key: 'ce', label: 'Marquage CE', type: 'checkbox' },
       ]}
       filters={[{ key: 'category', label: 'Catégorie', options: CATEGORIES }, { key: 'dmClass', label: 'Classe', options: ['I', 'IIa', 'IIb', 'III'] }]}
-      searchKeys={['ref', 'name', 'category', 'ammps']}
+      searchKeys={['ref', 'name', 'category', 'ammps', (p) => p.barcode || makeEan13(p.id.replace(/\D/g, '') + p.ref.length)]}
       columns={[
+        { key: 'img', label: '', noSort: true, noExport: true, render: (p) => <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--soft)', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>{p.image ? <img src={p.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icon name="box" size={16} />}</div> },
         { key: 'ref', label: 'Réf.', strong: true },
         { key: 'name', label: 'Désignation' },
         { key: 'category', label: 'Catégorie' },
@@ -76,6 +82,7 @@ function Products() {
               <Kpi label="Vendu 12 mois" value={int(sold.reduce((a, b) => a + b, 0))} icon="cart" color="green" />
               <Kpi label="Fournisseur" value={<span style={{ fontSize: 15 }}>{sup?.name}</span>} icon="globe" color="blue" foot={`délai ${sup?.leadTime} j · ${sup?.country}`} />
             </div>
+            <ProductMedia p={p} />
             <div className="muted small">Classe {p.dmClass} · {p.ammps} · {p.ce ? 'CE' : 'non CE'} · garantie {p.warrantyMonths} mois · PV {money(p.price)} HT · PR {money(p.cost)} HT</div>
             <Card title="Ventes mensuelles (unités)"><BarChart height={180} labels={months.map(monthLabel)} series={[{ name: 'Unités', color: COLORS.teal, data: sold }]} /></Card>
             <Card title="Lots en stock" pad={false}>
@@ -226,5 +233,113 @@ function Warehouses() {
         )
       })}
     </div>
+  )
+}
+
+const codeOf = (p) => p.barcode || makeEan13(p.id.replace(/\D/g, '') + String(p.ref.length))
+
+function ProductMedia({ p }) {
+  const { db, update, toast } = useStore()
+  const cur = db.products.find((x) => x.id === p.id) || p
+  const [labels, setLabels] = useState(false)
+  return (
+    <div className="grid g2">
+      <Card title="Photo produit" icon="eye">
+        <div className="row" style={{ gap: 14 }}>
+          <div style={{ width: 120, height: 120, borderRadius: 12, background: 'var(--soft)', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>{cur.image ? <img src={cur.image} alt={cur.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Icon name="box" size={30} />}</div>
+          <div className="stack" style={{ gap: 8 }}>
+            <label className="btn sm"><Icon name="upload" size={14} />Importer une photo<input type="file" accept="image/*" hidden onChange={async (e) => { const f = e.target.files[0]; if (f) { update('products', cur.id, { image: await imageToDataUrl(f, 320) }); toast('Photo enregistrée') } }} /></label>
+            {cur.image && <button className="btn sm danger" onClick={() => update('products', cur.id, { image: '' })}>Retirer</button>}
+          </div>
+        </div>
+      </Card>
+      <Card title="Code-barres" icon="barcode" action={<button className="btn sm" onClick={() => setLabels(true)}><Icon name="printer" size={14} />Étiquettes</button>}>
+        <Barcode code={codeOf(cur)} />
+        {!cur.barcode && <button className="btn sm" style={{ marginTop: 8 }} onClick={() => update('products', cur.id, { barcode: codeOf(cur) })}>Enregistrer ce code</button>}
+      </Card>
+      {labels && (
+        <Modal size="xl" title={`Étiquettes — ${cur.name}`} onClose={() => setLabels(false)} footer={<button className="btn primary" onClick={() => window.print()}><Icon name="printer" size={15} />Imprimer</button>}>
+          <div className="print-area"><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10, background: '#fff', padding: 10 }}>
+            {Array.from({ length: 12 }, (_, i) => (
+              <div key={i} style={{ border: '1px dashed #cbd5e1', borderRadius: 6, padding: 8, color: '#000', textAlign: 'center' }}>
+                <div style={{ fontWeight: 700, fontSize: 11 }}>{cur.name.slice(0, 40)}</div>
+                <div style={{ fontSize: 10 }}>{cur.ref} · {money(cur.price * (1 + cur.tva / 100))} TTC</div>
+                <Barcode code={codeOf(cur)} height={40} width={1.5} />
+              </div>
+            ))}
+          </div></div>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+// Recherche par code-barres / référence, avec la caméra quand le navigateur le permet (BarcodeDetector).
+function Scanner() {
+  const { db } = useStore()
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const [err, setErr] = useState('')
+  const found = q ? db.products.find((p) => codeOf(p) === q.trim() || p.ref.toLowerCase() === q.trim().toLowerCase()) : null
+  const camera = async () => {
+    setErr('')
+    if (!('BarcodeDetector' in window)) return setErr('La lecture par caméra n\'est pas prise en charge par ce navigateur : utilisez une douchette USB ou saisissez le code.')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      const video = document.getElementById('scan-video')
+      video.srcObject = stream; await video.play()
+      const det = new window.BarcodeDetector({ formats: ['ean_13', 'code_128', 'qr_code'] })
+      const tick = async () => {
+        if (!video.srcObject) return
+        const codes = await det.detect(video).catch(() => [])
+        if (codes[0]) { setQ(codes[0].rawValue); stream.getTracks().forEach((t) => t.stop()); video.srcObject = null } else requestAnimationFrame(tick)
+      }
+      tick()
+    } catch { setErr('Accès à la caméra refusé.') }
+  }
+  return (
+    <>
+      <button className="btn" onClick={() => setOpen(true)}><Icon name="scan" size={15} />Scanner</button>
+      {open && (
+        <Modal title="Scanner un produit" onClose={() => { const v = document.getElementById('scan-video'); v?.srcObject?.getTracks().forEach((t) => t.stop()); setOpen(false) }}>
+          <div className="row"><input className="input" autoFocus placeholder="Scannez avec la douchette ou saisissez le code / la référence" value={q} onChange={(e) => setQ(e.target.value)} /><button className="btn" onClick={camera}><Icon name="eye" size={15} />Caméra</button></div>
+          <video id="scan-video" muted playsInline style={{ width: '100%', maxHeight: 240, marginTop: 10, borderRadius: 10, background: '#000', display: 'block' }} />
+          {err && <div className="muted small" style={{ marginTop: 8 }}>{err}</div>}
+          {q && (found ? (
+            <div className="insight" style={{ marginTop: 12 }}>
+              <div className="ii" style={{ background: 'var(--soft)' }}><Icon name="box" size={16} /></div>
+              <div style={{ flex: 1 }}><b>{found.name}</b><div className="muted small">{found.ref} · stock {int(productStock(found))} · {money(found.price)} HT</div></div>
+            </div>
+          ) : <div className="muted small" style={{ marginTop: 10 }}>Aucun produit pour « {q} ».</div>)}
+        </Modal>
+      )}
+    </>
+  )
+}
+
+function Categories() {
+  const { db, mutate, toast, log } = useStore()
+  const [ren, setRen] = useState(null)
+  const cats = [...new Set(db.products.map((p) => p.category))].sort().map((c) => {
+    const ps = db.products.filter((p) => p.category === c)
+    return { id: c, name: c, count: ps.length, units: ps.reduce((s, p) => s + productStock(p), 0), value: ps.reduce((s, p) => s + productStock(p) * p.cost, 0), low: ps.filter((p) => productStock(p) < p.minStock).length }
+  })
+  return (
+    <>
+      <DataTable rows={cats} exportName="categories" onRowClick={(c) => setRen({ from: c.name, to: c.name })}
+        columns={[
+          { key: 'name', label: 'Catégorie', strong: true },
+          { key: 'count', label: 'Produits', right: true },
+          { key: 'units', label: 'Unités en stock', right: true, render: (c) => int(c.units) },
+          { key: 'value', label: 'Valeur (coût)', right: true, render: (c) => money(c.value) },
+          { key: 'low', label: 'Sous le seuil', right: true, render: (c) => (c.low ? <Badge color="red">{c.low}</Badge> : '—') },
+        ]} />
+      {ren && (
+        <Modal title="Renommer la catégorie" onClose={() => setRen(null)} footer={<><button className="btn" onClick={() => setRen(null)}>Annuler</button><button className="btn primary" onClick={() => { mutate((d) => { d.products.forEach((p) => { if (p.category === ren.from) p.category = ren.to }) }); log(`Catégorie « ${ren.from} » renommée en « ${ren.to} »`, 'layers'); toast('Catégorie renommée'); setRen(null) }}>Renommer</button></>}>
+          <Field label="Nouveau nom"><input className="input" value={ren.to} onChange={(e) => setRen({ ...ren, to: e.target.value })} /></Field>
+          <p className="muted small">Le nouveau nom s'applique à tous les produits de la catégorie. Pour créer une catégorie, saisissez-la sur la fiche d'un produit.</p>
+        </Modal>
+      )}
+    </>
   )
 }

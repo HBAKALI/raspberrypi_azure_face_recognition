@@ -234,20 +234,136 @@ export function buildSeed() {
     { id: 'l2', employeeId: 'e9', from: addDays(TODAY, -3), to: addDays(TODAY, 2), type: 'Congé maladie', status: 'Approuvé' },
     { id: 'l3', employeeId: 'e7', from: addDays(TODAY, 20), to: addDays(TODAY, 24), type: 'Congé annuel', status: 'En attente' },
   ]
-  const contracts = clients.slice(0, 7).map((c, i) => ({ id: `k${i + 1}`, number: `CM-2026-${String(i + 1).padStart(3, '0')}`, clientId: c.id, type: pick(['Maintenance préventive', 'Full service', 'Consommables']), start: addDays(TODAY, -between(30, 300)), end: addDays(TODAY, between(-10, 330)), amount: between(40, 260) * 1000, visits: between(2, 4) }))
+  const contracts = clients.slice(0, 7).map((c, i) => ({ id: `k${i + 1}`, number: `CM-2026-${String(i + 1).padStart(3, '0')}`, clientId: c.id, type: pick(['Maintenance préventive', 'Full service', 'Consommables']), start: addDays(TODAY, -between(30, 300)), end: addDays(TODAY, between(-10, 330)), amount: between(40, 260) * 1000, visits: between(2, 4), title: `Contrat ${c.name}`, partyType: 'client', status: 'Actif' }))
+  contracts.push({ id: 'k8', number: 'CD-2026-001', clientId: 's2', partyType: 'supplier', title: 'Accord de distribution exclusive Comen — Maroc', type: 'Distribution exclusive', start: addDays(TODAY, -400), end: addDays(TODAY, 330), amount: 0, visits: 0, status: 'Actif' }, { id: 'k9', number: 'CD-2026-002', clientId: 's1', partyType: 'supplier', title: 'Autorisation fabricant ZONCARE (marchés publics)', type: 'Autorisation fabricant', start: addDays(TODAY, -200), end: addDays(TODAY, 45), amount: 0, visits: 0, status: 'Actif' })
+
+  // ---------- Modules alignés sur GStocky (v4) ----------
+  // Point de vente : caisses, sessions, tickets
+  const registers = [
+    { id: 'r1', name: 'Caisse showroom', location: 'Showroom Route El Jadida', status: 'Fermée' },
+    { id: 'r2', name: 'Caisse comptoir dépôt', location: 'Dépôt Hay Hassani', status: 'Fermée' },
+  ]
+  const posSessions = [], posTickets = []
+  const cashiers = ['e3', 'e9']
+  for (let k = 0; k < 24; k++) {
+    const day = addDays(TODAY, -(24 - k))
+    const reg = registers[k % 2]
+    const sess = { id: `ps${k + 1}`, registerId: reg.id, cashierId: cashiers[k % 2], openedAt: `${day}T08:30:00`, closedAt: `${day}T18:30:00`, openingBalance: 2000, closingBalance: 0, status: 'Clôturée' }
+    let cash = 0
+    const nT = between(2, 7)
+    for (let t = 0; t < nT; t++) {
+      const items = [pick(conso), pick(conso)].filter((p, i, a) => a.indexOf(p) === i).map((p) => ({ productId: p.id, label: p.name, qty: between(1, 6), price: p.price, tva: 20 }))
+      const total = items.reduce((x, l) => x + l.qty * l.price * 1.2, 0)
+      const method = pick(['Espèces', 'Espèces', 'Carte bancaire', 'Chèque'])
+      if (method === 'Espèces') cash += total
+      posTickets.push({ id: `tk${posTickets.length + 1}`, number: `TK-${String(posTickets.length + 1).padStart(5, '0')}`, registerId: reg.id, sessionId: sess.id, cashierId: sess.cashierId, date: `${day}T${String(between(9, 18)).padStart(2, '0')}:${String(between(0, 59)).padStart(2, '0')}:00`, lines: items, method, total: Math.round(total * 100) / 100, status: r() < 0.05 ? 'Annulé' : 'Payé', clientId: '' })
+    }
+    sess.closingBalance = Math.round((2000 + cash) * 100) / 100
+    posSessions.push(sess)
+  }
+
+  // Pièces jointes : dossiers (les fichiers eux-mêmes sont stockés dans IndexedDB)
+  const folders = [
+    { id: 'f1', name: 'Appels d\'offres', parentId: '' }, { id: 'f2', name: 'Certificats CE & ISO 13485', parentId: '' },
+    { id: 'f3', name: 'Fiches techniques', parentId: '' }, { id: 'f4', name: 'Factures fournisseurs', parentId: '' }, { id: 'f5', name: 'Contrats', parentId: '' },
+  ]
+  const files = []
+
+  // Gestion des projets
+  const projects = [
+    ['Installation réanimation CHU Ibn Rochd', 'c1', 'En cours', 'Haute'], ['Déploiement appel malade Clinique Agdal', 'c10', 'Planifié', 'Moyenne'],
+    ['Renouvellement certification ISO 13485', '', 'En cours', 'Urgente'], ['Ouverture agence Marrakech', '', 'Planifié', 'Faible'], ['Formation biomédicale CHU Mohammed VI', 'c3', 'Terminé', 'Moyenne'],
+  ].map(([name, clientId, status, priority], i) => ({ id: `pj${i + 1}`, name, clientId, status, priority, start: addDays(TODAY, -between(10, 90)), end: addDays(TODAY, between(-5, 120)), team: employees.slice(2 + i, 5 + i).map((e) => e.id), description: '' }))
+  const TASKS = [
+    [0, 'Réception et contrôle des moniteurs', 'Terminé'], [0, 'Installation des bras plafonniers', 'En cours'], [0, 'Formation infirmiers réanimation', 'À faire'], [0, 'PV de réception provisoire', 'À faire'],
+    [1, 'Relevé des chambres et câblage', 'En revue'], [1, 'Commande Ascom Telligence', 'En cours'], [2, 'Audit interne processus achats', 'En cours'], [2, 'Mise à jour revue de direction', 'À faire'],
+    [2, 'Dossier technique DM classe IIb', 'En revue'], [3, 'Recherche local commercial', 'À faire'], [3, 'Recrutement délégué Marrakech', 'Annulé'], [4, 'Sessions de formation échographie', 'Terminé'],
+  ]
+  const tasks = TASKS.map(([pi, title, status], i) => ({ id: `tsk${i + 1}`, projectId: projects[pi].id, title, status, priority: pick(['Faible', 'Moyenne', 'Haute', 'Urgente']), assigneeId: pick(employees).id, due: addDays(TODAY, between(-5, 40)), description: '' }))
+
+  // RH : pointage et paie
+  const attendance = []
+  for (let k = 0; k < 7; k++) {
+    const day = addDays(TODAY, -k)
+    const wd = new Date(day + 'T00:00:00').getDay()
+    if (wd === 0) continue
+    for (const e of employees) {
+      const absent = r() < 0.06
+      const late = !absent && r() < 0.12
+      attendance.push({ id: `at${attendance.length + 1}`, employeeId: e.id, date: day, in: absent ? '' : late ? `09:${between(10, 45)}` : `08:${between(25, 59)}`, out: absent || k === 0 ? '' : wd === 6 ? '13:00' : `${between(17, 19)}:${String(between(0, 59)).padStart(2, '0')}`, status: absent ? 'Absent' : late ? 'Retard' : wd === 6 ? 'Demi-journée' : 'Présent' })
+    }
+  }
+  const payslips = []
+  for (const m of [1, 2, 3]) {
+    const d = new Date(TODAY.slice(0, 7) + '-01T00:00:00'); d.setMonth(d.getMonth() - m)
+    const period = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    for (const e of employees) {
+      const bonus = e.dept === 'Commercial' ? between(0, 4000) : 0
+      const gross = e.salary + bonus
+      const deductions = Math.round(Math.min(gross, 6000) * 0.0448 + gross * 0.0226 + gross * 0.12)
+      payslips.push({ id: `pa${payslips.length + 1}`, employeeId: e.id, period, base: e.salary, bonus, deductions, net: gross - deductions, status: 'Payé' })
+    }
+  }
+
+  // Abonnements (adapté : location de matériel et contrats de consommables récurrents)
+  const plans = [
+    { id: 'pl1', name: 'Location concentrateur O2 domicile', price: 1500, months: 1, items: ['Concentrateur 5 L', 'Livraison & installation', 'Maintenance', 'Astreinte 7j/7'] },
+    { id: 'pl2', name: 'Pack consommables monitorage', price: 4200, months: 1, items: ['Électrodes ECG', 'Papier ECG', 'Capteurs SpO2 (remplacement)'] },
+    { id: 'pl3', name: 'Contrat maintenance Premium', price: 36000, months: 12, items: ['2 visites préventives', 'Pièces incluses', 'Délai d\'intervention 24 h', 'Matériel de prêt'] },
+    { id: 'pl4', name: 'Location échographe portable', price: 9500, months: 1, items: ['Échographe Z50', '2 sondes', 'Formation', 'Assurance'] },
+  ]
+  const subscriptions = clients.slice(5, 14).map((c, i) => ({ id: `sb${i + 1}`, clientId: c.id, planId: plans[i % plans.length].id, start: addDays(TODAY, -between(20, 300)), end: addDays(TODAY, between(-15, 300)), status: r() < 0.1 ? 'Annulé' : 'Actif', autoRenew: r() < 0.7, lastBilled: addDays(TODAY, -between(1, 30)) }))
+
+  // Réservations (adapté : démonstrations et prêts de matériel)
+  const bookings = Array.from({ length: 14 }, (_, i) => {
+    const p = pick(equip)
+    const start = addDays(TODAY, between(-25, 35))
+    return { id: `bk${i + 1}`, title: `${pick(['Démonstration', 'Démonstration', 'Prêt de matériel', 'Essai clinique'])} — ${p.name.split(' ').slice(0, 3).join(' ')}`, productId: p.id, clientId: pick(clients).id, start, end: addDays(start, between(0, 5)), status: start < TODAY ? pick(['Réalisée', 'Réalisée', 'Annulée']) : pick(['En attente', 'Confirmée', 'Confirmée']), ownerId: pick(['e3', 'e4', 'e5', 'e6']), notes: '' }
+  })
+
+  // Prospects
+  const SOURCES = ['Salon / congrès', 'Site web', 'Recommandation', 'Appel d\'offres', 'Prospection terrain', 'LinkedIn']
+  const LEADS = [['Clinique Ibn Khaldoun', 'Tanger'], ['Centre Oncologie Al Azhar', 'Rabat'], ['Clinique Yasmine', 'Marrakech'], ['Hôpital Provincial Khouribga', 'Khouribga'], ['Polyclinique Atlas Agadir', 'Agadir'], ['Clinique Dar Salam', 'Casablanca'], ['Laboratoire BioLab', 'Fès'], ['Centre de rééducation Anfa', 'Casablanca'], ['Clinique Les Orangers', 'Meknès'], ['Clinique du Détroit', 'Tétouan']]
+  const leads = LEADS.map(([company, city], i) => ({ id: `ld${i + 1}`, company, contact: pick(['Dr. Benjelloun', 'M. Chraibi', 'Mme Bennani', 'Dr. El Idrissi', 'M. Tazi']), city, phone: `+212 6 ${between(10, 99)} ${between(10, 99)} ${between(10, 99)} ${between(10, 99)}`, email: '', source: pick(SOURCES), status: pick(['Nouveau', 'Contacté', 'Qualifié', 'Qualifié', 'Converti', 'Perdu']), ownerId: pick(['e3', 'e4', 'e5']), value: between(40, 900) * 1000, createdAt: addDays(TODAY, -between(1, 120)), notes: '' }))
+
+  // Marketing
+  const campaigns = [
+    { id: 'cp1', name: 'Lancement échographe ZONCARE Q7', channel: 'E-mail', segment: 'Cliniques privées', subject: 'Découvrez le ZONCARE Q7 en démonstration', body: '', status: 'Envoyée', sentAt: addDays(TODAY, -21), recipients: 7, opens: 5, clicks: 2 },
+    { id: 'cp2', name: 'Relance consommables trimestrielle', channel: 'WhatsApp', segment: 'Tous les clients', subject: '', body: '', status: 'Planifiée', sentAt: addDays(TODAY, 5), recipients: 18, opens: 0, clicks: 0 },
+  ]
+
+  // Utilisateurs & rôles
+  const ALL = ['dashboard', 'crm', 'inventory', 'sales', 'purchases', 'pos', 'finance', 'attachments', 'accounting', 'projects', 'hr', 'subscriptions', 'contracts', 'analytics', 'bookings', 'prospects', 'planning', 'marketing', 'ai', 'importer', 'tenders', 'service', 'quality']
+  const users = [
+    { id: 'u1', name: 'Hassan BAKALI', email: 'hassan@liyahealth.ma', role: 'Propriétaire', modules: ALL, active: true, lastLogin: `${TODAY}T08:12:00` },
+    { id: 'u2', name: 'Salma Idrissi', email: 'salma@liyahealth.ma', role: 'Commercial', modules: ['dashboard', 'crm', 'sales', 'prospects', 'tenders', 'marketing', 'ai'], active: true, lastLogin: addDays(TODAY, -1) + 'T09:40:00' },
+    { id: 'u3', name: 'Fatima Zahra Lahlou', email: 'fz@liyahealth.ma', role: 'Comptable', modules: ['dashboard', 'finance', 'accounting', 'purchases', 'sales', 'attachments'], active: true, lastLogin: addDays(TODAY, -2) + 'T10:05:00' },
+    { id: 'u4', name: 'Karim Ouazzani', email: 'karim@liyahealth.ma', role: 'Technicien', modules: ['planning', 'service', 'inventory', 'quality'], active: true, lastLogin: addDays(TODAY, -1) + 'T07:58:00' },
+    { id: 'u5', name: 'Rachid Amrani', email: 'rachid@liyahealth.ma', role: 'Magasinier', modules: ['inventory', 'purchases', 'pos'], active: true, lastLogin: addDays(TODAY, -3) + 'T08:30:00' },
+  ]
+  // Documents : mode de paiement prévu sur les factures
+  for (const d of documents) if (d.type === 'facture' || d.type === 'facture_f') d.paymentMethod = d.paymentMethod || pick(['Virement', 'Virement', 'Chèque', 'Effet'])
+  for (const iv of interventions) if (iv.status === 'Terminée' && r() < 0.06) iv.status = pick(['Échouée', 'Reportée'])
 
   return {
-    version: 3,
+    version: 4,
     settings: {
       company: COMPANY,
       modules: null, // null => valeurs par défaut du registre
       ai: { apiKey: '', proxyUrl: '', model: 'claude-opus-5-5', effort: 'medium', autoInsights: true },
       theme: 'light',
       counters,
-      user: { name: 'Hassan BAKALI', role: 'Directeur Général' },
+      user: { name: 'Hassan BAKALI', role: 'Directeur Général', userId: 'u1', employeeId: 'e1' },
+      general: { currency: 'MAD', defaultTva: 20, language: 'fr', rib: '011 780 0000123456789012 34', paymentTerms: 'Paiement à 60 jours fin de mois. Pénalités de retard selon la loi 69-21.', footer: 'Merci de votre confiance.', logo: '', stamp: '' },
+      invoiceTemplate: 'moderne',
+      onboarding: { dismissed: false },
+      security: { twoFactor: false, sessions: [{ id: 'sess1', device: 'Chrome · Windows', location: 'Casablanca', lastSeen: new Date().toISOString(), current: true }, { id: 'sess2', device: 'Safari · iPhone', location: 'Casablanca', lastSeen: addDays(TODAY, -1) + 'T21:10:00', current: false }] },
+      integrations: { apiKey: '', webhooks: [] },
+      analyticsWidgets: null,
     },
     warehouses, suppliers, products, clients, employees, documents, payments, movements, equipment, interventions, tenders, quality,
     opportunities, expenses, leaves, contracts,
+    registers, posSessions, posTickets, folders, files, projects, tasks, attendance, payslips, plans, subscriptions, bookings, leads, campaigns, users,
     activities: [], aiChats: [],
   }
 }

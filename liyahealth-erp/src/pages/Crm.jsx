@@ -7,7 +7,7 @@ const STAGES = ['Prospection', 'Qualification', 'Proposition', 'Négociation', '
 const PROBA = { Prospection: 0.1, Qualification: 0.25, Proposition: 0.45, Négociation: 0.7, Gagnée: 1, Perdue: 0 }
 const STAGE_COLOR = { Prospection: '#64748b', Qualification: '#3d7be0', Proposition: '#7b61ff', Négociation: '#e8a33d', Gagnée: '#3bb273', Perdue: '#e05263' }
 
-export default function Crm() {
+export function Opportunities() {
   const { db, add, update, remove, toast, log } = useStore()
   const [tab, setTab] = useState('kanban')
   const [edit, setEdit] = useState(null)
@@ -49,16 +49,16 @@ export default function Crm() {
 
   return (
     <div className="stack">
-      <PageHead title="CRM & opportunités" sub="Pipeline commercial, prévision pondérée et suivi des délégués" crumbs="Commercial › CRM">
-        <button className="btn primary" onClick={() => setEdit({ stage: 'Prospection', probability: 0.1, closeDate: TODAY, owner: db.settings.user.name })}><Icon name="plus" size={15} />Nouvelle opportunité</button>
-      </PageHead>
       <div className="grid g4">
         <Kpi label="Pipeline ouvert" value={moneyK(pipeline)} icon="target" color="violet" foot={`${open.length} opportunités actives`} />
         <Kpi label="Prévision pondérée" value={moneyK(weighted)} icon="trend" color="teal" foot="Montant × probabilité" />
         <Kpi label="Taux de conversion" value={pct(won / Math.max(won + lost, 1), 0)} icon="check" color="green" foot={`${won} gagnée(s) / ${lost} perdue(s)`} />
         <Kpi label="Opportunités" value={int(opps.length)} icon="layers" color="navy" />
       </div>
-      <Tabs tabs={[['kanban', 'Pipeline'], ['list', 'Liste']]} value={tab} onChange={setTab} />
+      <div className="row wrap">
+        <div style={{ flex: 1, minWidth: 240 }}><Tabs tabs={[['kanban', 'Pipeline'], ['list', 'Liste']]} value={tab} onChange={setTab} /></div>
+        <button className="btn primary" onClick={() => setEdit({ stage: 'Prospection', probability: 0.1, closeDate: TODAY, owner: db.settings.user.name })}><Icon name="plus" size={15} />Nouvelle opportunité</button>
+      </div>
       {tab === 'kanban' ? (
         <div className="kanban">
           {STAGES.map((s) => {
@@ -107,6 +107,16 @@ export default function Crm() {
           <FormFields fields={fields} value={edit} onChange={(v) => setEdit(v.stage !== edit.stage ? { ...v, probability: PROBA[v.stage] } : v)} />
         </Modal>
       )}
+    </div>
+  )
+}
+
+// Compatibilité : page autonome « CRM & opportunités »
+export default function Crm() {
+  return (
+    <div className="stack">
+      <PageHead title="CRM & opportunités" sub="Pipeline commercial, prévision pondérée et suivi des délégués" crumbs="Commercial › CRM" />
+      <Opportunities />
     </div>
   )
 }

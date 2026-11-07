@@ -6,8 +6,9 @@ import { Badge, Card, DataTable, Field, Icon, Kpi, LineChart, PageHead, Progress
 import { TODAY, addDays, daysBetween, docTotals, fdate, int, lastMonths, money, moneyK, monthLabel, unitsByMonth, uid } from '../lib/domain.js'
 import { QUICK_PROMPTS, anomalies, clientRisk, expiryRisks, holt, insights, localAnswer, reorderPlan, revenueForecast, tenderScore } from '../ai/engine.js'
 import { aiConfigured, askClaude, explainError } from '../ai/claude.js'
+import InvoiceReader from '../components/InvoiceReader.jsx'
 
-const TABS = [['overview', 'Vue d\'ensemble'], ['chat', 'Assistant'], ['forecast', 'Prévisions'], ['reorder', 'Réapprovisionnement'], ['expiry', 'Péremption'], ['clients', 'Risque clients'], ['anomalies', 'Anomalies'], ['write', 'Rédaction IA']]
+const TABS = [['overview', 'Vue d\'ensemble'], ['chat', 'Assistant'], ['forecast', 'Prévisions'], ['reorder', 'Réapprovisionnement'], ['expiry', 'Péremption'], ['clients', 'Risque clients'], ['anomalies', 'Anomalies'], ['invoices', 'Lecture de factures'], ['write', 'Rédaction IA']]
 
 export default function AI() {
   const { db } = useStore()
@@ -28,6 +29,7 @@ export default function AI() {
       {t === 'expiry' && <Expiry />}
       {t === 'clients' && <ClientsRisk />}
       {t === 'anomalies' && <Anomalies />}
+      {t === 'invoices' && <InvoiceReader />}
       {t === 'write' && <Writer />}
     </div>
   )
@@ -47,6 +49,7 @@ function Overview() {
     ['expiry', 'clock', 'Anti-péremption', 'Lots qui ne seront pas écoulés à temps, valeur exposée, actions FEFO.'],
     ['clients', 'wallet', 'Scoring risque client', 'Retards, encours, échu : priorités de recouvrement.'],
     ['anomalies', 'alert', 'Détection d\'anomalies', 'Ventes à perte, remises atypiques, doublons, trop-perçus.'],
+    ['invoices', 'scan', 'Lecture de factures', 'Déposez une facture PDF ou photo : fournisseur, lignes et totaux extraits, facture fournisseur créée.'],
     ['write', 'edit', 'Rédaction IA', 'Relances, mémoires techniques AO, fiches produits, e-mails fournisseurs.'],
   ]
   return (
@@ -373,7 +376,7 @@ function localDraft(db, kind, id) {
 }
 
 function Writer() {
-  const { db } = useStore()
+  const { db, mutate } = useStore()
   const preset = useMemo(() => { try { const x = JSON.parse(ss.get('liya-write') || 'null'); ss.del('liya-write'); return x } catch { return null } }, [])
   const [kind, setKind] = useState(preset?.kind || 'relance')
   const target = WRITE_KINDS.find((k) => k[0] === kind)[2]
@@ -393,6 +396,7 @@ function Writer() {
   const generate = async () => {
     if (!id) return
     const draft = localDraft(db, kind, id)
+    if (kind === 'relance') mutate((d) => { d.documents.forEach((x) => { if (x.type === 'facture' && x.partyId === id && x.status === 'Validée' && x.dueDate < TODAY) x.remindedAt = TODAY }) })
     if (!online) { setText(draft); setNote('Brouillon généré par le moteur local (modèle structuré). Connectez Claude pour une rédaction personnalisée.'); return }
     setBusy(true); setText(''); setNote('')
     try {

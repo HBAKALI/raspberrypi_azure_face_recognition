@@ -4,13 +4,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { buildSeed } from '../data/seed.js'
 import { DOC_TYPES, uid, TODAY } from './domain.js'
 
-const KEY = 'liyahealth-erp-v3'
+const KEY = 'liyahealth-erp-v4'
 const Ctx = createContext(null)
 
 function load() {
   try {
     const raw = localStorage.getItem(KEY)
-    if (raw) { const db = JSON.parse(raw); if (db.version === 3) return db }
+    if (raw) { const db = JSON.parse(raw); if (db.version === 4) return db }
   } catch { /* stockage indisponible */ }
   return buildSeed()
 }

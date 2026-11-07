@@ -66,9 +66,11 @@ export const DOC_TYPES = {
   bl: { kind: 'sale', label: 'Bon de livraison', plural: 'Bons de livraison', prefix: 'BL', next: 'facture', statuses: ['Brouillon', 'Livré', 'Annulé'] },
   facture: { kind: 'sale', label: 'Facture', plural: 'Factures', prefix: 'FA', next: null, statuses: ['Brouillon', 'Validée', 'Annulée'] },
   avoir: { kind: 'sale', label: 'Avoir', plural: 'Avoirs', prefix: 'AV', next: null, statuses: ['Brouillon', 'Validé'] },
+  retour: { kind: 'sale', label: 'Retour client', plural: 'Retours', prefix: 'RC', next: 'avoir', statuses: ['Brouillon', 'Reçu', 'Annulé'] },
   bc: { kind: 'purchase', label: 'Bon de commande', plural: 'Bons de commande', prefix: 'BC', next: 'reception', statuses: ['Brouillon', 'Envoyé', 'Confirmé', 'Reçu', 'Annulé'] },
   reception: { kind: 'purchase', label: 'Bon de réception', plural: 'Réceptions', prefix: 'BR', next: 'facture_f', statuses: ['Brouillon', 'Reçu', 'Annulé'] },
   facture_f: { kind: 'purchase', label: 'Facture fournisseur', plural: 'Factures fournisseurs', prefix: 'FF', next: null, statuses: ['Brouillon', 'Validée', 'Annulée'] },
+  retour_f: { kind: 'purchase', label: 'Retour fournisseur', plural: 'Retours fournisseurs', prefix: 'RF', next: null, statuses: ['Brouillon', 'Expédié', 'Annulé'] },
 }
 
 // Numéro que recevra le prochain document de ce type (affichage uniquement)
@@ -100,7 +102,7 @@ export function payStatus(db, doc) {
 const STATUS_COLORS = {
   Brouillon: 'gray', Envoyé: 'blue', Accepté: 'green', Refusé: 'red', Expiré: 'gray', Confirmée: 'blue', Confirmé: 'blue',
   'En préparation': 'amber', Livrée: 'green', Livré: 'green', Annulée: 'gray', Annulé: 'gray', Validée: 'teal', Validé: 'teal',
-  Reçu: 'green', Payée: 'green', 'En retard': 'red', Partielle: 'amber', 'À payer': 'blue',
+  Reçu: 'green', Expédié: 'blue', Échouée: 'red', Reportée: 'gray', 'Clôturée': 'gray', Ouverte: 'green', Fermée: 'gray', 'Payé': 'green', Résilié: 'gray', 'À renouveler': 'amber', Planifié: 'blue', Terminé: 'green', 'En pause': 'amber', Nouveau: 'gray', Contacté: 'blue', Qualifié: 'violet', Converti: 'green', Planifiée: 'blue', Envoyée: 'green', 'Confirmée': 'green', 'Réalisée': 'teal', Présent: 'green', Absent: 'red', Retard: 'amber', 'Demi-journée': 'blue', Propriétaire: 'violet', Payée: 'green', 'En retard': 'red', Partielle: 'amber', 'À payer': 'blue',
   Veille: 'gray', 'En préparation AO': 'amber', Déposé: 'blue', Gagné: 'green', Perdu: 'red', Infructueux: 'gray',
   Actif: 'green', 'En maintenance': 'amber', 'Hors service': 'red', 'Sous garantie': 'teal', Planifiée: 'blue', 'En cours': 'amber', Terminée: 'green',
   Ouvert: 'red', 'En investigation': 'amber', Clôturé: 'green', 'CAPA en cours': 'violet',
@@ -139,3 +141,5 @@ export function unitsByMonth(db, productId, months) {
   }
   return months.map((m) => map[m])
 }
+
+export const PAYMENT_METHODS = ['Virement', 'Chèque', 'Effet', 'Espèces', 'Carte bancaire', 'Virement international']

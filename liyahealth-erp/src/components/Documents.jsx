@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { useStore } from '../lib/store.jsx'
 import { go, useRoute } from '../lib/nav.js'
 import { Badge, DataTable, Field, Icon, Kpi, Modal, PageHead, Tabs, Confirm } from './ui.jsx'
-import { DOC_TYPES, previewNumber, TODAY, addDays, docTotals, docPaid, fdate, inWords, lineTotal, money, moneyK, payStatus, productStock, uid } from '../lib/domain.js'
+import { DOC_TYPES, PAYMENT_METHODS, previewNumber, TODAY, addDays, docTotals, docPaid, fdate, inWords, lineTotal, money, moneyK, payStatus, productStock, uid } from '../lib/domain.js'
 import { stockIn, stockOut } from '../lib/stock.js'
 
 export default function Documents({ kind, title, sub }) {
@@ -30,7 +30,7 @@ export default function Documents({ kind, title, sub }) {
 
   const blank = () => {
     const p = parties[0]
-    return { type, partyId: p?.id || '', date: TODAY, dueDate: addDays(TODAY, type === 'devis' ? 30 : p?.paymentTerms || p?.leadTime || 60), status: T.statuses[0], lines: [], notes: type === 'devis' ? 'Offre valable 30 jours. Livraison, installation et formation incluses. Garantie 24 mois pièces et main-d\'œuvre.' : '' }
+    return { type, paymentMethod: 'Virement', partyId: p?.id || '', date: TODAY, dueDate: addDays(TODAY, type === 'devis' ? 30 : p?.paymentTerms || p?.leadTime || 60), status: T.statuses[0], lines: [], notes: type === 'devis' ? 'Offre valable 30 jours. Livraison, installation et formation incluses. Garantie 24 mois pièces et main-d\'œuvre.' : '' }
   }
 
   // Effets métier lorsqu'un document change de statut
@@ -38,6 +38,8 @@ export default function Documents({ kind, title, sub }) {
     if (doc.stockApplied) return
     if (doc.type === 'bl' && doc.status === 'Livré') { doc.lines.forEach((l) => stockOut(d, l.productId, l.qty, doc.number)); doc.stockApplied = true; registerEquipment(d, doc) }
     if (doc.type === 'reception' && doc.status === 'Reçu') { doc.lines.forEach((l) => stockIn(d, l.productId, l.qty, doc.number, { lot: l.lot, expiry: l.expiry })); doc.stockApplied = true }
+    if (doc.type === 'retour' && doc.status === 'Reçu') { doc.lines.forEach((l) => l.productId && stockIn(d, l.productId, l.qty, doc.number, { lot: l.lot || 'RETOUR', expiry: l.expiry, warehouseId: 'w1' })); doc.stockApplied = true }
+    if (doc.type === 'retour_f' && doc.status === 'Expédié') { doc.lines.forEach((l) => l.productId && stockOut(d, l.productId, l.qty, doc.number)); doc.stockApplied = true }
   }
   // Les équipements livrés rejoignent automatiquement le parc installé (SAV)
   const registerEquipment = (d, doc) => {
@@ -66,15 +68,15 @@ export default function Documents({ kind, title, sub }) {
     toast(`Statut : ${status}`)
   }
 
-  const convert = (doc) => {
-    const nt = T.next
+  const convert = (doc, target) => {
+    const nt = target || T.next
     const party = parties.find((p) => p.id === doc.partyId)
     const number = previewNumber(db, nt)
     const created = { ...structuredClone(doc), id: uid(), type: nt, date: TODAY, dueDate: addDays(TODAY, party?.paymentTerms || 60), status: DOC_TYPES[nt].statuses[0], sourceId: doc.id, stockApplied: false, notes: `Réf. ${doc.number}` }
     mutate((d) => {
       d.documents.unshift({ ...created, number: nextNumber(nt, d) })
       const src = d.documents.find((x) => x.id === doc.id)
-      src.status = { devis: 'Accepté', commande: 'Livrée', bc: 'Reçu' }[doc.type] || src.status
+      if (!target) src.status = { devis: 'Accepté', commande: 'Livrée', bc: 'Reçu' }[doc.type] || src.status
     })
     toast(`${DOC_TYPES[nt].label} ${number} créé`)
     log(`${T.label} ${doc.number} converti en ${DOC_TYPES[nt].label.toLowerCase()} ${number}`, 'arrowRight')
@@ -120,6 +122,7 @@ export default function Documents({ kind, title, sub }) {
             {['facture', 'facture_f'].includes(view.type) && view.status === 'Validée' && payStatus(db, view) !== 'Payée' && <button className="btn" onClick={() => setPay(view)}><Icon name="money" size={15} />Paiement</button>}
             <button className="btn" onClick={() => { setEdit(structuredClone(view)); setView(null) }} disabled={view.stockApplied}><Icon name="edit" size={15} />Modifier</button>
             <button className="btn" onClick={() => window.print()}><Icon name="printer" size={15} />Imprimer / PDF</button>
+            {(view.type === 'facture' || view.type === 'facture_f' || view.type === 'bl' || view.type === 'reception') && <button className="btn" onClick={() => convert(view, kind === 'sale' ? 'retour' : 'retour_f')}><Icon name="refresh" size={15} />Retour</button>}
             {T.next && <button className="btn primary" onClick={() => convert(view)}><Icon name="arrowRight" size={15} />{DOC_TYPES[T.next].label}</button>}
           </>}>
           <PrintDoc doc={db.documents.find((x) => x.id === view.id) || view} />
@@ -153,6 +156,7 @@ function Editor({ doc, setDoc, kind, T, parties, onSave, onClose }) {
         <Field label="Date"><input type="date" value={doc.date} onChange={(e) => set('date', e.target.value)} /></Field>
         <Field label={T.label === 'Devis' ? 'Valable jusqu\'au' : 'Échéance'}><input type="date" value={doc.dueDate} onChange={(e) => set('dueDate', e.target.value)} /></Field>
         <Field label="Statut"><select value={doc.status} onChange={(e) => set('status', e.target.value)}>{T.statuses.map((s) => <option key={s}>{s}</option>)}</select></Field>
+        {['facture', 'facture_f', 'devis', 'commande', 'bc'].includes(doc.type) && <Field label="Mode de paiement"><select value={doc.paymentMethod || 'Virement'} onChange={(e) => set('paymentMethod', e.target.value)}>{PAYMENT_METHODS.map((m) => <option key={m}>{m}</option>)}</select></Field>}
       </div>
       {party && <div className="muted small" style={{ marginTop: 8 }}>{party.city || party.country} · {kind === 'sale' ? `ICE ${party.ice} · paiement ${party.paymentTerms} j` : `${party.currency} · délai ${party.leadTime} j`}</div>}
 
@@ -200,42 +204,61 @@ function Editor({ doc, setDoc, kind, T, parties, onSave, onClose }) {
   )
 }
 
-export function PrintDoc({ doc }) {
+// Modèles de document : « moderne » (bandeau couleur), « classique » (encadrés), « minimal » (sobre).
+export const INVOICE_TEMPLATES = [
+  ['moderne', 'Moderne', 'Bandeau navy / teal / vert, en-têtes de tableau foncés'],
+  ['classique', 'Classique', 'Encadrés noirs, typographie sobre, idéal marchés publics'],
+  ['minimal', 'Minimal', 'Épuré, beaucoup d\'espace, filet d\'accent'],
+]
+
+export function PrintDoc({ doc, template }) {
   const { db } = useStore()
   const T = DOC_TYPES[doc.type]
   const co = db.settings.company
+  const g = db.settings.general || {}
+  const tpl = template || db.settings.invoiceTemplate || 'moderne'
   const party = (T.kind === 'sale' ? db.clients : db.suppliers).find((p) => p.id === doc.partyId)
   const tot = docTotals(doc)
   const paid = docPaid(db, doc)
+  const ink = tpl === 'classique' ? '#111' : '#0b2545'
+  const accent = tpl === 'classique' ? '#111' : '#13a89e'
+  const th = tpl === 'moderne' ? { background: '#0b2545', color: '#fff' } : tpl === 'classique' ? { background: '#fff', color: '#111', border: '1px solid #111' } : { background: 'transparent', color: '#64748b', borderBottom: '2px solid #13a89e' }
+  const td = tpl === 'classique' ? { border: '1px solid #111' } : {}
+  const font = tpl === 'classique' ? 'Georgia, "Times New Roman", serif' : 'inherit'
+  const box = tpl === 'classique' ? { border: '1px solid #111', borderRadius: 0, background: '#fff' } : tpl === 'minimal' ? { background: 'transparent', borderLeft: '3px solid #13a89e', borderRadius: 0 } : { background: '#f4f7fb', borderRadius: 10 }
+  const Logo = () => (g.logo
+    ? <img src={g.logo} alt="Logo" style={{ maxHeight: 54, maxWidth: 180, objectFit: 'contain' }} />
+    : <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 40, height: 40, borderRadius: tpl === 'classique' ? 4 : 10, background: tpl === 'classique' ? '#111' : 'linear-gradient(135deg,#13a89e,#3bb273)', display: 'grid', placeItems: 'center', color: '#fff' }}><Icon name="pulse" size={22} stroke={2.6} /></div>
+        <div><div style={{ fontWeight: 800, fontSize: 18, color: ink }}>LIYA HEALTH</div><div style={{ fontSize: 11, color: accent, fontWeight: 600 }}>{co.tagline}</div></div>
+      </div>)
   return (
     <div className="print-area">
-      <div className="print-doc" style={{ borderRadius: 12, border: '1px solid #e3e9f1' }}>
-        <div className="print-band" />
+      <div className="print-doc" style={{ borderRadius: 12, border: '1px solid #e3e9f1', fontFamily: font }}>
+        {tpl === 'moderne' && <div className="print-band" />}
+        {tpl === 'minimal' && <div style={{ height: 2, width: 64, background: '#13a89e' }} />}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20, gap: 20, flexWrap: 'wrap' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg,#13a89e,#3bb273)', display: 'grid', placeItems: 'center', color: '#fff' }}><Icon name="pulse" size={22} stroke={2.6} /></div>
-              <div><div style={{ fontWeight: 800, fontSize: 18, color: '#0b2545' }}>LIYA HEALTH</div><div style={{ fontSize: 11, color: '#13a89e', fontWeight: 600 }}>{co.tagline}</div></div>
-            </div>
+            <Logo />
             <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 10, lineHeight: 1.6 }}>{co.address}<br />{co.phone} · {co.email}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: '#0b2545', textTransform: 'uppercase' }}>{T.label}</div>
+            <div style={{ fontSize: tpl === 'minimal' ? 28 : 22, fontWeight: tpl === 'minimal' ? 300 : 800, color: ink, textTransform: tpl === 'minimal' ? 'none' : 'uppercase', letterSpacing: tpl === 'classique' ? '.08em' : 0 }}>{T.label}</div>
             <div style={{ fontWeight: 700, marginTop: 4 }}>N° {doc.number}</div>
-            <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>Date : {fdate(doc.date)}<br />{doc.type === 'devis' ? 'Validité' : 'Échéance'} : {fdate(doc.dueDate)}</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>Date : {fdate(doc.date)}<br />{doc.type === 'devis' ? 'Validité' : 'Échéance'} : {fdate(doc.dueDate)}{doc.paymentMethod ? <><br />Règlement : {doc.paymentMethod}</> : null}</div>
           </div>
         </div>
-        <div style={{ marginTop: 20, padding: 14, background: '#f4f7fb', borderRadius: 10, maxWidth: 380, marginLeft: 'auto' }}>
+        <div style={{ marginTop: 20, padding: 14, maxWidth: 380, marginLeft: 'auto', ...box }}>
           <div style={{ fontSize: 11, textTransform: 'uppercase', color: '#64748b', fontWeight: 700 }}>{T.kind === 'sale' ? 'Client' : 'Fournisseur'}</div>
           <div style={{ fontWeight: 700, fontSize: 15, marginTop: 4 }}>{party?.name}</div>
           <div style={{ fontSize: 12, color: '#64748b' }}>{party?.contact}<br />{party?.city || party?.country}{party?.ice ? <><br />ICE : {party.ice}</> : null}</div>
         </div>
         <table>
-          <thead><tr><th>Réf.</th><th>Désignation</th><th style={{ textAlign: 'right' }}>Qté</th><th style={{ textAlign: 'right' }}>PU HT</th><th style={{ textAlign: 'right' }}>Remise</th><th style={{ textAlign: 'right' }}>Total HT</th></tr></thead>
+          <thead><tr>{['Réf.', 'Désignation', 'Qté', 'PU HT', 'Remise', 'Total HT'].map((h, i) => <th key={h} style={{ ...th, textAlign: i >= 2 ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
           <tbody>
             {doc.lines.map((l, i) => {
               const p = db.products.find((x) => x.id === l.productId)
-              return <tr key={i}><td>{p?.ref}</td><td>{l.label}{p?.dmClass ? <div style={{ fontSize: 10.5, color: '#64748b' }}>DM classe {p.dmClass} · {p.ammps}{l.lot ? ` · Lot ${l.lot}` : ''}</div> : null}</td><td style={{ textAlign: 'right' }}>{l.qty}</td><td style={{ textAlign: 'right' }}>{money(l.price)}</td><td style={{ textAlign: 'right' }}>{l.discount ? `${l.discount} %` : '—'}</td><td style={{ textAlign: 'right', fontWeight: 600 }}>{money(lineTotal(l).ht)}</td></tr>
+              return <tr key={i}><td style={td}>{p?.ref}</td><td style={td}>{l.label}{p?.dmClass ? <div style={{ fontSize: 10.5, color: '#64748b' }}>DM classe {p.dmClass} · {p.ammps}{l.lot ? ` · Lot ${l.lot}` : ''}</div> : null}</td><td style={{ ...td, textAlign: 'right' }}>{l.qty}</td><td style={{ ...td, textAlign: 'right' }}>{money(l.price)}</td><td style={{ ...td, textAlign: 'right' }}>{l.discount ? `${l.discount} %` : '—'}</td><td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{money(lineTotal(l).ht)}</td></tr>
             })}
           </tbody>
         </table>
@@ -244,15 +267,22 @@ export function PrintDoc({ doc }) {
             <div style={{ fontWeight: 700 }}>Arrêté le présent document à la somme de :</div>
             <div style={{ fontStyle: 'italic', marginTop: 4 }}>{inWords(Math.abs(tot.ttc))} TTC</div>
             {doc.notes && <div style={{ marginTop: 12, color: '#64748b', whiteSpace: 'pre-wrap' }}>{doc.notes}</div>}
+            {T.kind === 'sale' && g.paymentTerms && <div style={{ marginTop: 10, color: '#64748b' }}>{g.paymentTerms}</div>}
+            {T.kind === 'sale' && g.rib && <div style={{ marginTop: 6 }}><b>RIB :</b> {g.rib} — {co.bank}</div>}
           </div>
           <div style={{ minWidth: 240 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}><span>Total HT</span><b>{money(tot.ht)}</b></div>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}><span>TVA</span><span>{money(tot.tva)}</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', background: '#0b2545', color: '#fff', borderRadius: 8, marginTop: 6 }}><b>Total TTC</b><b>{money(tot.ttc)}</b></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', background: tpl === 'minimal' ? 'transparent' : ink, color: tpl === 'minimal' ? ink : '#fff', borderTop: tpl === 'minimal' ? '2px solid #13a89e' : 0, borderRadius: tpl === 'moderne' ? 8 : 0, marginTop: 6 }}><b>Total TTC</b><b>{money(tot.ttc)}</b></div>
             {paid > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', color: '#23874f' }}><span>Déjà réglé</span><b>{money(paid)}</b></div>}
+            <div style={{ marginTop: 18, textAlign: 'center', fontSize: 11, color: '#64748b' }}>
+              Cachet et signature
+              <div style={{ height: 80, border: '1px dashed #cbd5e1', borderRadius: 8, marginTop: 6, display: 'grid', placeItems: 'center' }}>{g.stamp ? <img src={g.stamp} alt="Cachet" style={{ maxHeight: 74, maxWidth: 200, objectFit: 'contain' }} /> : null}</div>
+            </div>
           </div>
         </div>
-        <div style={{ marginTop: 28, paddingTop: 10, borderTop: '1px solid #e3e9f1', fontSize: 10.5, color: '#64748b', textAlign: 'center', lineHeight: 1.6 }}>
+        <div style={{ marginTop: 28, paddingTop: 10, borderTop: `1px solid ${tpl === 'classique' ? '#111' : '#e3e9f1'}`, fontSize: 10.5, color: '#64748b', textAlign: 'center', lineHeight: 1.6 }}>
+          {g.footer && <div style={{ color: ink, fontWeight: 600, marginBottom: 4 }}>{g.footer}</div>}
           {co.name} — Capital {co.capital} — {co.rc} — ICE {co.ice} — TP {co.tp} — CNSS {co.cnss}<br />{co.ammps} · Banque : {co.bank}
         </div>
       </div>

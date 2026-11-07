@@ -201,6 +201,10 @@ export function buildContext(db) {
     appels_offres: db.tenders.map((t) => ({ ref: t.ref, acheteur: t.buyer, objet: t.object, estimation: t.estimate, offre: t.ourBid, statut: t.status, date_limite: t.deadline, score_ia: tenderScore(db, t).score })),
     pipeline_crm: db.opportunities.map((o) => ({ opportunite: o.title, client: db.clients.find((c) => c.id === o.clientId)?.name, montant: o.amount, etape: o.stage, probabilite: o.probability })),
     sav: { equipements_installes: db.equipment.length, maintenances_en_retard: db.equipment.filter((e) => e.nextMaintenance < TODAY).length, interventions_planifiees: db.interventions.filter((i) => i.status !== 'Terminée').length },
+    point_de_vente_30j: (() => { const t = (db.posTickets || []).filter((x) => x.status === 'Payé' && x.date.slice(0, 10) >= addDays(TODAY, -30)); return { tickets: t.length, ca_ttc: Math.round(t.reduce((s, x) => s + x.total, 0)) } })(),
+    prospects: (db.leads || []).filter((l) => !['Converti', 'Perdu'].includes(l.status)).map((l) => ({ entreprise: l.company, ville: l.city, source: l.source, statut: l.status, valeur: l.value })),
+    abonnements_actifs: (db.subscriptions || []).filter((x) => x.status === 'Actif').length,
+    projets: (db.projects || []).map((pj) => ({ projet: pj.name, statut: pj.status, taches_ouvertes: (db.tasks || []).filter((t) => t.projectId === pj.id && !['Terminé', 'Annulé'].includes(t.status)).length })),
     qualite_ouverts: db.quality.filter((q) => q.status !== 'Clôturé').map((q) => ({ type: q.type, gravite: q.severity, description: q.description, statut: q.status })),
     alertes: ins.map((i) => `${i.severity} — ${i.title}`),
   }

@@ -16,24 +16,36 @@ npm run build:single   # un seul fichier HTML autonome (démo hors ligne) dans d
 
 Les données de démonstration (12 mois d'historique réaliste) sont générées au premier lancement et enregistrées dans le navigateur (`localStorage`). Paramètres › Données permet d'exporter / importer / réinitialiser.
 
-## Modules (activables dans Paramètres › Modules)
+## Modules (Réglages › Modules) — alignés sur GStocky
 
-| Groupe | Module | Fonctionnalités |
+Les 20 modules de GStocky sont repris, plus 3 modules métier propres aux dispositifs médicaux. Chaque module s'active ou se désactive ; le tableau de bord, l'inventaire et les réglages forment le noyau.
+
+| # | Module | Fonctionnalités |
 |---|---|---|
-| Pilotage | Tableau de bord | CA, marge, créances, prévision IA, ventes par catégorie, top clients, stock, AO, pipeline, SAV |
-| | Rapports & analyses | CA/marge par mois, client, produit, catégorie, ville, public/privé ; export CSV ; rapport mensuel imprimable |
-| Commercial | CRM | Pipeline Kanban (glisser-déposer), prévision pondérée, taux de conversion |
-| | Ventes | Devis → commande → BL → facture → avoir ; conversion en un clic ; impression PDF ; montant en lettres ; paiements |
-| | Clients | CHU, hôpitaux, cliniques ; encours, échu, historique, parc installé |
-| | Appels d'offres | Pipeline marchés publics, score IA, check-list des pièces, cautions, calendrier des échéances |
-| Achats & Stock | Achats | BC fournisseurs → réception (lots, péremption) → facture fournisseur |
-| | Fournisseurs | Partenaires fabricants, devises, délais, notation |
-| | Produits & stock | Catalogue DM (classe, AMMPS, CE), lots, FEFO, multi-dépôts, mouvements, transferts, inventaire |
-| Opérations | SAV & parc installé | Équipements livrés ajoutés automatiquement, garanties, contrats, interventions, planning techniciens |
-| | Qualité & matériovigilance | Réclamations, incidents AMMPS, rappels FSCA, CAPA, traçabilité lot → clients à contacter |
-| Finance & RH | Finance & trésorerie | Encaissements, décaissements, dépenses, TVA, balance âgée, trésorerie prévisionnelle 13 semaines |
-| | Ressources humaines | Employés, congés (validation), masse salariale, CNSS/AMO (estimation) |
-| Intelligence | **LIYA IA** | Voir ci-dessous |
+| 1 | Tableau de bord | Assistant de démarrage, CA, marge, état des factures (payées, en attente, partielles, en retard, annulées, à échéance), moyens de paiement, briefing IA |
+| 2 | CRM | Clients et fournisseurs : solde dû, retards, historique, parc installé |
+| 3 | Inventaire | Produits avec photo, codes-barres EAN-13 (génération, étiquettes, scan douchette ou caméra), catégories, lots et péremption (FEFO), entrepôts, mouvements, inventaire physique |
+| 4 | Ventes | Devis → commandes → livraisons → factures → retours / avoirs, documents liés, mode de paiement, 3 modèles de facture |
+| 5 | Achats | Commandes → réceptions (lots) → factures fournisseurs → retours fournisseurs |
+| 6 | Point de vente | Caisse (catalogue, panier, scan, encaissement, rendu monnaie, ticket), transactions, ouverture / clôture de caisse, rapports |
+| 7 | Finance | Paiements, dépenses, balance âgée, TVA, trésorerie prévisionnelle |
+| 8 | Pièces jointes | Gestionnaire de fichiers : dossiers, notes, déplacement, stockage local (IndexedDB) |
+| 9 | Comptable | Période, déclaration de TVA (Excel / PDF), situation financière, revue de clôture (ICE manquants, références de paiement…), journaux, grand livre simplifié |
+| 10 | Gestion des projets | Tâches en Kanban (À faire → Terminé), projets avec équipe, priorité, avancement |
+| 11 | Ressources humaines | Tableau de bord RH, Mon espace, employés, congés, pointage et absences, paie |
+| 12 | Abonnements | Adapté : location de matériel et forfaits récurrents (MRR, renouvellements, facturation de période) |
+| 13 | Contrats | Création en étapes, contrats clients et fournisseurs (maintenance, distribution, autorisation fabricant), renouvellement |
+| 14 | Analyses avancées | Tableaux de bord à widgets personnalisables + rapports détaillés |
+| 15 | Réservations | Adapté : démonstrations et prêts de matériel, calendrier, contrôle de disponibilité |
+| 16 | Prospects | Prospects (source, statut, commercial, valeur, score IA), conversion en client, pipeline d'opportunités |
+| 17 | Planning | Calendrier des interventions techniciens (mois, semaine, liste, Mon planning), statuts prévu / en cours / terminé / échoué / reporté |
+| 18 | Marketing | Campagnes e-mail et WhatsApp par segment, message rédigé par l'IA, automatisations (verrouillé dans GStocky, inclus ici) |
+| 19 | LIYA IA | Assistant, prévisions, réapprovisionnement, lecture automatique de factures, scoring, anomalies, rédaction |
+| 20 | Importer | Import Excel / CSV en 3 étapes (type, association des colonnes, aperçu) : clients, fournisseurs, produits, factures, livraisons, factures fournisseurs |
+| — | Système & réglages | Général (logo, cachet, TVA, devise, langue, RIB, conditions, pied de page, modèle de facture), modules, intégrations (Claude, API, webhooks), sécurité (2FA, sessions), utilisateurs et accès par module, journal |
+| + | Appels d'offres | Spécifique LIYA HEALTH : marchés publics, score IA, check-list des pièces, cautions |
+| + | SAV & parc installé | Spécifique LIYA HEALTH : équipements, garanties, interventions |
+| + | Qualité & matériovigilance | Spécifique LIYA HEALTH : réclamations, incidents AMMPS, rappels, CAPA, traçabilité lot |
 
 ## Module IA — LIYA IA
 
@@ -44,6 +56,7 @@ Fonctionne **sans clé API** grâce à un moteur local (`src/ai/engine.js`), et 
 - **Réapprovisionnement** : point de commande, stock de sécurité (service 95 %), délais fournisseurs → **génération automatique des bons de commande** par fournisseur.
 - **Anti-péremption** : lots qui ne seront pas écoulés avant leur date limite, valeur exposée, actions FEFO.
 - **Risque clients** : score à partir de l'échu, de l'encours et des retards moyens → relance rédigée par l'IA.
+- **Lecture de factures** : déposez une facture fournisseur (PDF, image) ; Claude extrait fournisseur, lignes et totaux, puis l'ERP crée la facture fournisseur.
 - **Détection d'anomalies** : ventes sous le prix de revient, remises atypiques, quantités hors norme, doublons, trop-perçus.
 - **Scoring des appels d'offres** : adéquation catalogue, historique acheteur, délai, taux de réussite, taille → recommandation.
 - **Rédaction IA** : relances de paiement, mémoires techniques d'AO, fiches produits, demandes de cotation fournisseurs, e-mails d'accompagnement de devis.

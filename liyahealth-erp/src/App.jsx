@@ -1,27 +1,42 @@
-import { useMemo, useState } from 'react'
+import { Suspense, lazy, useMemo, useState } from 'react'
 import { useStore } from './lib/store.jsx'
-import { GROUPS, MODULES, isEnabled } from './lib/modules.js'
+import { GROUPS, MODULES, isEnabled, isModuleOn } from './lib/modules.js'
 import { go, NavCtx, useHashRoute } from './lib/nav.js'
 import { Icon, Badge } from './components/ui.jsx'
 import { insights } from './ai/engine.js'
 import { docTotals, money, DOC_TYPES } from './lib/domain.js'
 import Dashboard from './pages/Dashboard.jsx'
-import Sales from './pages/Sales.jsx'
-import Purchases from './pages/Purchases.jsx'
-import Clients from './pages/Clients.jsx'
-import Suppliers from './pages/Suppliers.jsx'
-import Stock from './pages/Stock.jsx'
-import Tenders from './pages/Tenders.jsx'
-import Crm from './pages/Crm.jsx'
-import Service from './pages/Service.jsx'
-import Quality from './pages/Quality.jsx'
-import Finance from './pages/Finance.jsx'
-import Hr from './pages/Hr.jsx'
-import Reports from './pages/Reports.jsx'
-import AI from './pages/AI.jsx'
-import Settings from './pages/Settings.jsx'
+const Sales = lazy(() => import('./pages/Sales.jsx'))
+const Purchases = lazy(() => import('./pages/Purchases.jsx'))
+const Clients = lazy(() => import('./pages/Clients.jsx'))
+const Suppliers = lazy(() => import('./pages/Suppliers.jsx'))
+const Stock = lazy(() => import('./pages/Stock.jsx'))
+const Tenders = lazy(() => import('./pages/Tenders.jsx'))
+const Service = lazy(() => import('./pages/Service.jsx'))
+const Quality = lazy(() => import('./pages/Quality.jsx'))
+const Finance = lazy(() => import('./pages/Finance.jsx'))
+const Hr = lazy(() => import('./pages/Hr.jsx'))
+const Reports = lazy(() => import('./pages/Reports.jsx'))
+const AI = lazy(() => import('./pages/AI.jsx'))
+const Settings = lazy(() => import('./pages/Settings.jsx'))
+const PointOfSale = lazy(() => import('./pages/PointOfSale.jsx'))
+const Attachments = lazy(() => import('./pages/Attachments.jsx'))
+const Importer = lazy(() => import('./pages/Importer.jsx'))
+const Accounting = lazy(() => import('./pages/Accounting.jsx'))
+const Analytics = lazy(() => import('./pages/Analytics.jsx'))
+const Projects = lazy(() => import('./pages/Projects.jsx'))
+const Planning = lazy(() => import('./pages/Planning.jsx'))
+const Bookings = lazy(() => import('./pages/Bookings.jsx'))
+const Subscriptions = lazy(() => import('./pages/Subscriptions.jsx'))
+const Prospects = lazy(() => import('./pages/Prospects.jsx'))
+const Marketing = lazy(() => import('./pages/Marketing.jsx'))
+const Contracts = lazy(() => import('./pages/Contracts.jsx'))
 
-const PAGES = { dashboard: Dashboard, sales: Sales, purchases: Purchases, clients: Clients, suppliers: Suppliers, stock: Stock, tenders: Tenders, crm: Crm, service: Service, quality: Quality, finance: Finance, hr: Hr, reports: Reports, ai: AI, settings: Settings }
+const PAGES = {
+  dashboard: Dashboard, sales: Sales, purchases: Purchases, clients: Clients, suppliers: Suppliers, stock: Stock, tenders: Tenders, service: Service, quality: Quality,
+  finance: Finance, hr: Hr, reports: Reports, ai: AI, settings: Settings, pos: PointOfSale, attachments: Attachments, importer: Importer, accounting: Accounting,
+  analytics: Analytics, projects: Projects, planning: Planning, bookings: Bookings, subscriptions: Subscriptions, prospects: Prospects, marketing: Marketing, contracts: Contracts,
+}
 
 export default function App() {
   const { db, setSettings, toasts } = useStore()
@@ -49,7 +64,7 @@ export default function App() {
             </div>
           </div>
           {GROUPS.map((g) => {
-            const items = MODULES.filter((m) => m.group === g && enabled(m.id))
+            const items = MODULES.filter((m) => m.group === g && isModuleOn(db.settings, m.id)).flatMap((m) => m.pages.map(([id, label, icon]) => ({ id, label, icon, mod: m.id })))
             if (!items.length) return null
             return (
               <div className="nav-group" key={g}>
@@ -59,6 +74,7 @@ export default function App() {
                     <Icon name={m.icon} size={17} />{m.label}
                     {m.id === 'ai' && <span className="ai-pill">IA</span>}
                     {m.id === 'tenders' && <span className="count">{db.tenders.filter((t) => ['Veille', 'En préparation AO'].includes(t.status)).length}</span>}
+                    {m.id === 'pos' && db.registers.some((r) => r.status === 'Ouverte') && <span className="count" style={{ background: 'var(--green)', color: '#fff' }}>ouverte</span>}
                   </button>
                 ))}
               </div>
@@ -96,7 +112,7 @@ export default function App() {
             </div>
           </header>
           <main className="content">
-            <Page />
+            <Suspense fallback={<div className="empty"><span className="typing"><span /><span /><span /></span></div>}><Page /></Suspense>
           </main>
         </div>
         <div className="toasts">{toasts.map((t) => <div key={t.id} className="toast"><Icon name="check" size={16} />{t.text}</div>)}</div>

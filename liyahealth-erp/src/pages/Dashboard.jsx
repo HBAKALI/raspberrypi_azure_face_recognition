@@ -5,6 +5,7 @@ import { Badge, BarChart, Card, Donut, Icon, Kpi, LineChart, PageHead, Progress,
 import { TODAY, docTotals, docPaid, fdate, lastMonths, money, moneyK, monthLabel, productStock, revenueByMonth, stockValue, daysBetween, int } from '../lib/domain.js'
 import { insights, revenueForecast, reorderPlan } from '../ai/engine.js'
 import { isEnabled } from '../lib/modules.js'
+import { payStatus, addDays } from '../lib/domain.js'
 
 export default function Dashboard() {
   const { db } = useStore()
@@ -51,12 +52,15 @@ export default function Dashboard() {
         <button className="btn primary" onClick={() => go('sales', 'facture')}><Icon name="file" size={15} />Facturer</button>
       </PageHead>
 
+      <Onboarding />
       <div className="grid g4">
         <Kpi label="CA HT dernier mois clos" value={moneyK(s.cur)} icon="money" color="teal" delta={s.prev ? (s.cur - s.prev) / s.prev : undefined} foot="vs mois précédent" spark={s.rev} />
         <Kpi label="CA HT 3 derniers mois" value={moneyK(s.quarter)} icon="trend" color="navy" delta={s.prevQ ? (s.quarter - s.prevQ) / s.prevQ : undefined} foot="vs 3 mois précédents" />
         <Kpi label="Marge brute 12 mois" value={`${((1 - s.cost / (s.net || 1)) * 100).toFixed(1)} %`} icon="chart" color="green" foot={moneyK(s.net - s.cost)} spark={s.marginByMonth} />
         <Kpi label="Créances clients" value={moneyK(s.receivable)} icon="wallet" color="amber" foot={`dont ${moneyK(s.overdue)} échues`} />
       </div>
+
+      <DocStatus />
 
       {isEnabled(db.settings, 'ai') && alerts.length > 0 && (
         <div className="ai-hero">
@@ -131,7 +135,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid g3">
-        <Card title="Pipeline commercial" icon="target" action={<button className="btn sm ghost" onClick={() => go('crm')}>CRM</button>}>
+        <Card title="Pipeline commercial" icon="target" action={<button className="btn sm ghost" onClick={() => go('prospects')}>Pipeline</button>}>
           <BarChart height={180} labels={['Prospection', 'Qualification', 'Proposition', 'Négociation']} series={[{ name: 'Montant', color: COLORS.violet, data: ['Prospection', 'Qualification', 'Proposition', 'Négociation'].map((st) => pipeline.filter((o) => o.stage === st).reduce((t, o) => t + o.amount, 0)) }]} />
           <div className="row small"><span className="muted">Pondéré</span><span className="spacer" /><b>{moneyK(pipeline.reduce((t, o) => t + o.amount * o.probability, 0))}</b></div>
         </Card>
@@ -159,4 +163,64 @@ export default function Dashboard() {
       </div>
     </div>
   )
+}
+
+// Assistant de démarrage (comme GStocky) : coordonnées, modèle de facture, premiers éléments, sécurité.
+function Onboarding() {
+  const { db, setSettings } = useStore()
+  const co = db.settings.company
+  const ob = db.settings.onboarding || {}
+  if (ob.dismissed) return null
+  const steps = [
+    ['Renseigner téléphone, e-mail et adresse', Boolean(co.phone && co.email && co.address), 'settings', 'general'],
+    ['Choisir le modèle de facture', Boolean(ob.templateChosen), 'settings', 'general'],
+    ['Ajouter le logo et le cachet', Boolean(db.settings.general?.logo && db.settings.general?.stamp), 'settings', 'general'],
+    ['Importer produits et clients', db.products.length > 0 && db.clients.length > 0, 'importer', ''],
+    ['Créer une première facture', db.documents.some((d) => d.type === 'facture'), 'sales', 'facture'],
+    ['Activer la double authentification', Boolean(db.settings.security?.twoFactor), 'settings', 'security'],
+  ]
+  const done = steps.filter((x) => x[1]).length
+  if (done === steps.length) return null
+  return (
+    <Card title={`Démarrage — ${done}/${steps.length} étapes`} icon="check" action={<button className="btn sm ghost" onClick={() => setSettings({ onboarding: { ...ob, dismissed: true } })}>Masquer</button>}>
+      <Progress value={done / steps.length} />
+      <div className="grid g3" style={{ marginTop: 14, gap: 10 }}>
+        {steps.map(([label, ok, page, tab]) => (
+          <button key={label} className="insight" style={{ cursor: 'pointer', textAlign: 'left', padding: 10, opacity: ok ? 0.6 : 1 }} onClick={() => go(page, tab)}>
+            <div className="ii" style={{ width: 26, height: 26, background: ok ? 'var(--green)' : 'var(--soft)', color: ok ? '#fff' : 'var(--muted)' }}><Icon name={ok ? 'check' : 'arrowRight'} size={14} /></div>
+            <span className="small" style={{ fontWeight: 600, textDecoration: ok ? 'line-through' : 'none' }}>{label}</span>
+          </button>
+        ))}
+      </div>
+    </Card>
+  )
+}
+
+// Indicateurs de factures façon GStocky : payées, en attente, partielles, en retard, annulées, à échéance, moyens de paiement.
+function DocStatus() {
+  const { db } = useStore()
+  const block = (type, title, icon, page, tab) => {
+    const docs = db.documents.filter((d) => d.type === type)
+    const valid = docs.filter((d) => d.status === 'Validée')
+    const cnt = (st) => valid.filter((d) => payStatus(db, d) === st)
+    const sum = (arr) => arr.reduce((t, d) => t + docTotals(d).ttc, 0)
+    const soon = valid.filter((d) => payStatus(db, d) !== 'Payée' && d.dueDate >= TODAY && d.dueDate <= addDays(TODAY, 7))
+    const rows = [['Payées', cnt('Payée'), 'green'], ['En attente', cnt('À payer'), 'blue'], ['Partiellement payées', cnt('Partielle'), 'amber'], ['En retard', cnt('En retard'), 'red'], ['Annulées', docs.filter((d) => d.status === 'Annulée'), 'gray'], ['À échéance (7 j)', soon, 'violet']]
+    const byMethod = {}
+    for (const d of valid) byMethod[d.paymentMethod || 'Non précisé'] = (byMethod[d.paymentMethod || 'Non précisé'] || 0) + docTotals(d).ttc
+    return (
+      <Card title={title} icon={icon} action={<button className="btn sm ghost" onClick={() => go(page, tab)}>Voir</button>}>
+        <div className="row" style={{ marginBottom: 10 }}><div><div className="muted small">Total TTC ({valid.length} factures)</div><div style={{ fontSize: 20, fontWeight: 800 }}>{moneyK(sum(valid))}</div></div></div>
+        <div className="grid g2" style={{ gap: 8 }}>
+          {rows.map(([l, arr, c]) => (
+            <div key={l} className="row small" style={{ padding: '7px 10px', borderRadius: 9, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+              <i style={{ width: 8, height: 8, borderRadius: 99, background: COLORS[c] }} /><span style={{ flex: 1 }}>{l}</span><b className="num">{arr.length}</b><span className="muted num">{moneyK(sum(arr))}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 14 }}><Donut size={120} data={Object.entries(byMethod).map(([k, v], i) => ({ label: k, value: v, color: SERIES[i % SERIES.length] }))} label={Object.keys(byMethod).length} sub="modes" /></div>
+      </Card>
+    )
+  }
+  return <div className="grid g2">{block('facture', 'Ventes — état des factures', 'cart', 'sales', 'facture')}{block('facture_f', 'Achats — factures fournisseurs', 'truck', 'purchases', 'facture_f')}</div>
 }

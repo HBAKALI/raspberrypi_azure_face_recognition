@@ -79,7 +79,10 @@ export default function Importer() {
   const onFile = async (f) => {
     if (!f) return
     try {
-      const wb = XLSX.read(await f.arrayBuffer(), { type: 'array', cellDates: true })
+      // CSV lu comme texte (UTF-8) pour conserver les accents ; Excel lu en binaire
+      const wb = /\.csv$/i.test(f.name)
+        ? XLSX.read((await f.text()).replace(/^\uFEFF/, ''), { type: 'string', raw: true })
+        : XLSX.read(await f.arrayBuffer(), { type: 'array', cellDates: true })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const rows = XLSX.utils.sheet_to_json(ws, { defval: '', raw: true })
       if (!rows.length) return toast('Le fichier ne contient aucune ligne')
